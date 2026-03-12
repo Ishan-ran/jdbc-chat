@@ -1,0 +1,10 @@
+# Maven build artifacts
+/target/
+
+# Database files
+/.advanced-chat/
+
+# IDE config
+*.iml
+.idea/
+*.class

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Advanced JDBC Chat UI</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: "Space Grotesk", "Inter", system-ui, -apple-system, sans-serif;
+            background: radial-gradient(circle at top, #ffdf90, #ffb347, #ff7a18);
+            color: #111;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            background: radial-gradient(circle at top, rgba(255, 255, 255, 0.5), transparent 35%), #111;
+        }
+
+        .page {
+            width: min(1100px, 100%);
+            padding: 2rem 1.5rem 3rem;
+        }
+
+        .hero {
+            background: rgba(17, 17, 17, 0.7);
+            border-radius: 24px;
+            padding: 2rem;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+        }
+
+        .hero h1 {
+            margin: 0 0 0.3rem;
+            font-size: clamp(2rem, 3vw, 2.6rem);
+            color: #fff5d1;
+        }
+
+        .hero p {
+            margin-top: 0;
+            color: #cfcfcf;
+            max-width: 640px;
+            line-height: 1.5;
+        }
+
+        form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+        }
+
+        input[type="text"], textarea {
+            flex: 1 1 240px;
+            border: none;
+            border-radius: 12px;
+            padding: 0.9rem 1rem;
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        input:focus, textarea:focus {
+            outline: 2px solid #ffdf90;
+            outline-offset: 1px;
+        }
+
+        button {
+            border: none;
+            border-radius: 12px;
+            padding: 0.9rem 1.5rem;
+            font-size: 1rem;
+            background: linear-gradient(120deg, #ffb347, #ffcc33 60%, #ff7a18);
+            color: #111;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 80ms ease;
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        .grid {
+            margin-top: 2rem;
+            display: grid;
+            gap: 1.25rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            padding: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            min-height: 220px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card h2 {
+            margin: 0 0 0.75rem;
+            color: #fff;
+        }
+
+        .message-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+            overflow: auto;
+        }
+
+        .message-list li {
+            padding: 0.65rem 0.9rem;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            font-size: 0.95rem;
+            color: #f3f3f3;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .message-meta {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #ffdf90;
+            margin-bottom: 0.3rem;
+        }
+
+        .status-bar {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: #d0d0d0;
+        }
+
+        @media (max-width: 600px) {
+            .hero, .card {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    <section class="hero">
+        <h1>Advanced JDBC Chat</h1>
+        <p>Type a handle, send messages, and browse the latest conversation powered by SQLite. This interface talks
+            to the same CLI backend (ChatDao) you already built, but with an HTML frontend served from Java.</p>
+        <form id="handleForm">
+            <input id="handleInput" type="text" placeholder="Pick a friendly handle" autocomplete="off" />
+            <button type="submit">Set handle</button>
+        </form>
+        <div id="handleFeedback" class="status-bar"></div>
+    </section>
+
+    <section class="grid">
+        <article class="card">
+            <h2>Send message</h2>
+            <form id="sendForm">
+                <textarea id="messageInput" rows="3" placeholder="What's on your mind?" required></textarea>
+                <button type="submit">Send</button>
+            </form>
+            <div id="sendFeedback" class="status-bar"></div>
+        </article>
+
+        <article class="card">
+            <h2>Recent conversation</h2>
+            <ul id="recentList" class="message-list"></ul>
+            <div class="status-bar" id="recentStatus">loading...</div>
+        </article>
+
+        <article class="card">
+            <h2>Search by handle</h2>
+            <form id="searchForm">
+                <input id="searchInput" type="text" placeholder="Start typing a handle" autocomplete="off" />
+                <button type="submit">Search</button>
+            </form>
+            <ul id="searchList" class="message-list"></ul>
+            <div class="status-bar" id="searchStatus"></div>
+        </article>
+
+        <article class="card">
+            <h2>Your latest posts</h2>
+            <ul id="ownList" class="message-list"></ul>
+            <div class="status-bar" id="ownStatus"></div>
+        </article>
+    </section>
+</div>
+<script>
+    const API = {
+        recent: '/api/messages/recent',
+        search: '/api/messages/search',
+        mine: '/api/messages/my',
+        send: '/api/messages/send'
+    };
+
+    const handleKey = 'jdbcChatHandle';
+    const handleInput = document.getElementById('handleInput');
+    const handleFeedback = document.getElementById('handleFeedback');
+    const sendForm = document.getElementById('sendForm');
+    const messageInput = document.getElementById('messageInput');
+    const sendFeedback = document.getElementById('sendFeedback');
+    const recentList = document.getElementById('recentList');
+    const recentStatus = document.getElementById('recentStatus');
+    const searchForm = document.getElementById('searchForm');
+    const searchInput = document.getElementById('searchInput');
+    const searchList = document.getElementById('searchList');
+    const searchStatus = document.getElementById('searchStatus');
+    const ownList = document.getElementById('ownList');
+    const ownStatus = document.getElementById('ownStatus');
+
+    let currentHandle = localStorage.getItem(handleKey) || '';
+    handleInput.value = currentHandle;
+    if (currentHandle) {
+        handleFeedback.textContent = `Current handle: ${currentHandle}`;
+        refreshOwnPosts();
+    }
+
+    fetchRecent();
+
+    document.getElementById('handleForm').addEventListener('submit', event => {
+        event.preventDefault();
+        currentHandle = handleInput.value.trim();
+        if (!currentHandle) {
+            handleFeedback.textContent = 'Handle cannot be empty.';
+            return;
+        }
+        localStorage.setItem(handleKey, currentHandle);
+        handleFeedback.textContent = `Your handle is set to ${currentHandle}.`;
+        refreshOwnPosts();
+    });
+
+    sendForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!currentHandle) {
+            sendFeedback.textContent = 'Set a handle before sending messages.';
+            return;
+        }
+        const text = messageInput.value.trim();
+        if (!text) {
+            sendFeedback.textContent = 'Message cannot be empty.';
+            return;
+        }
+        sendFeedback.textContent = 'Sending...';
+        try {
+            await sendMessage(text);
+            messageInput.value = '';
+            sendFeedback.textContent = 'Message sent.';
+            fetchRecent();
+            refreshOwnPosts();
+            searchList.innerHTML = '';
+            searchStatus.textContent = '';
+        } catch (error) {
+            sendFeedback.textContent = error.message;
+        }
+    });
+
+    searchForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const prefix = searchInput.value.trim();
+        if (!prefix) {
+            searchStatus.textContent = 'Enter a prefix to search.';
+            return;
+        }
+        searchStatus.textContent = 'Searching...';
+        try {
+            const results = await fetchJson(`${API.search}?prefix=${encodeURIComponent(prefix)}`);
+            renderMessages(searchList, results);
+            searchStatus.textContent = results.length ? `Found ${results.length} entries.` : 'No matches yet.';
+        } catch (error) {
+            searchStatus.textContent = 'Search failed.';
+        }
+    });
+
+    async function fetchRecent() {
+        recentStatus.textContent = 'Refreshing...';
+        try {
+            const data = await fetchJson(`${API.recent}?limit=12`);
+            renderMessages(recentList, data);
+            recentStatus.textContent = data.length ? `Showing ${data.length} most recent posts.` : 'No posts yet.';
+        } catch (error) {
+            recentStatus.textContent = 'Could not load recent posts.';
+        }
+    }
+
+    async function refreshOwnPosts() {
+        if (!currentHandle) {
+            ownList.innerHTML = '';
+            ownStatus.textContent = 'Select a handle to see your posts.';
+            return;
+        }
+        ownStatus.textContent = 'Loading your posts...';
+        try {
+            const data = await fetchJson(`${API.mine}?author=${encodeURIComponent(currentHandle)}`);
+            renderMessages(ownList, data);
+            ownStatus.textContent = data.length ? `You have ${data.length} recent posts.` : 'You haven\'t posted yet.';
+        } catch (error) {
+            ownStatus.textContent = 'Unable to load your posts.';
+        }
+    }
+
+    async function sendMessage(text) {
+        await fetchJson(API.send, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({author: currentHandle, text})
+        });
+    }
+
+    async function fetchJson(url, options = {}) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || 'Request failed.');
+        }
+        return response.json();
+    }
+
+    function renderMessages(container, messages) {
+        container.innerHTML = '';
+        messages.slice(0, 12).forEach(msg => {
+            const li = document.createElement('li');
+            const meta = document.createElement('div');
+            meta.className = 'message-meta';
+            meta.textContent = `${msg.author} • ${formatTimestamp(msg.timestamp)}`;
+            const body = document.createElement('div');
+            body.textContent = msg.text;
+            li.append(meta, body);
+            container.appendChild(li);
+        });
+    }
+
+    function formatTimestamp(timestamp) {
+        try {
+            const dt = new Date(timestamp);
+            return dt.toLocaleString();
+        } catch (error) {
+            return timestamp;
+        }
+    }
+</script>
+</body>
+</html>
